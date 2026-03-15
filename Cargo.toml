@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "opcua-client",
+    "opcua-python",
+    "opcua-duckdb",
+]
+resolver = "2"

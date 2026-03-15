@@ -1,0 +1,11 @@
+[package]
+name = "opcua-client"
+version = "0.1.0"
+edition = "2021"
+description = "OPC UA client library exposing read, write, history, and browse operations"
+
+[dependencies]
+opcua = { version = "0.12", features = ["client"] }
+chrono = "0.4"
+thiserror = "2"
+log = "0.4"

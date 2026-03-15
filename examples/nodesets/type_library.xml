@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Example Nodeset2 type library for process equipment.
+
+  Defines OPC UA ObjectTypes for common process instrumentation:
+    - ProcessEquipmentType (abstract base)
+    - PumpType
+    - FlowMeterType
+    - TemperatureSensorType
+    - ValveType
+
+  Namespace: urn:example:process-equipment-types (ns=2)
+-->
+<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
+           xmlns:uax="http://opcfoundation.org/UA/2008/02/Types.xsd"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
+
+  <NamespaceUris>
+    <Uri>urn:example:process-equipment-types</Uri>
+  </NamespaceUris>
+
+  <Aliases>
+    <Alias Alias="Boolean">i=1</Alias>
+    <Alias Alias="Double">i=11</Alias>
+    <Alias Alias="String">i=12</Alias>
+    <Alias Alias="HasComponent">i=47</Alias>
+    <Alias Alias="HasProperty">i=46</Alias>
+    <Alias Alias="HasSubtype">i=45</Alias>
+    <Alias Alias="HasTypeDefinition">i=40</Alias>
+    <Alias Alias="Organizes">i=35</Alias>
+    <Alias Alias="BaseObjectType">i=58</Alias>
+  </Aliases>
+
+  <!-- ================================================================== -->
+  <!-- ProcessEquipmentType (abstract base for all process equipment)      -->
+  <!-- ================================================================== -->
+  <UAObjectType NodeId="ns=1;i=1000" BrowseName="1:ProcessEquipmentType" IsAbstract="true">
+    <DisplayName>ProcessEquipmentType</DisplayName>
+    <Description>Abstract base type for process equipment</Description>
+    <References>
+      <Reference ReferenceType="HasSubtype" IsForward="false">BaseObjectType</Reference>
+    </References>
+  </UAObjectType>
+
+  <!-- Tag property on ProcessEquipmentType -->
+  <UAVariable NodeId="ns=1;i=1001" BrowseName="1:Tag" DataType="String" AccessLevel="3">
+    <DisplayName>Tag</DisplayName>
+    <Description>Equipment tag identifier</Description>
+    <References>
+      <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=1000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=68</Reference>
+    </References>
+  </UAVariable>
+
+  <!-- Status property on ProcessEquipmentType -->
+  <UAVariable NodeId="ns=1;i=1002" BrowseName="1:Status" DataType="String" AccessLevel="3">
+    <DisplayName>Status</DisplayName>
+    <Description>Current operational status</Description>
+    <References>
+      <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=1000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=68</Reference>
+    </References>
+  </UAVariable>
+
+  <!-- ================================================================== -->
+  <!-- PumpType                                                            -->
+  <!-- ================================================================== -->
+  <UAObjectType NodeId="ns=1;i=2000" BrowseName="1:PumpType">
+    <DisplayName>PumpType</DisplayName>
+    <Description>A pump with speed and running state</Description>
+    <References>
+      <Reference ReferenceType="HasSubtype" IsForward="false">ns=1;i=1000</Reference>
+    </References>
+  </UAObjectType>
+
+  <UAVariable NodeId="ns=1;i=2001" BrowseName="1:Speed" DataType="Double" AccessLevel="3">
+    <DisplayName>Speed</DisplayName>
+    <Description>Pump rotational speed (RPM)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=2000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=2002" BrowseName="1:IsRunning" DataType="Boolean" AccessLevel="3">
+    <DisplayName>IsRunning</DisplayName>
+    <Description>Whether the pump is currently running</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=2000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=2003" BrowseName="1:Power" DataType="Double" AccessLevel="1">
+    <DisplayName>Power</DisplayName>
+    <Description>Current power consumption (kW)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=2000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <!-- ================================================================== -->
+  <!-- FlowMeterType                                                       -->
+  <!-- ================================================================== -->
+  <UAObjectType NodeId="ns=1;i=3000" BrowseName="1:FlowMeterType">
+    <DisplayName>FlowMeterType</DisplayName>
+    <Description>A flow measurement instrument</Description>
+    <References>
+      <Reference ReferenceType="HasSubtype" IsForward="false">ns=1;i=1000</Reference>
+    </References>
+  </UAObjectType>
+
+  <UAVariable NodeId="ns=1;i=3001" BrowseName="1:FlowRate" DataType="Double" AccessLevel="1">
+    <DisplayName>FlowRate</DisplayName>
+    <Description>Current flow rate (m³/h)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=3000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=3002" BrowseName="1:TotalVolume" DataType="Double" AccessLevel="1">
+    <DisplayName>TotalVolume</DisplayName>
+    <Description>Accumulated total volume (m³)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=3000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <!-- ================================================================== -->
+  <!-- TemperatureSensorType                                               -->
+  <!-- ================================================================== -->
+  <UAObjectType NodeId="ns=1;i=4000" BrowseName="1:TemperatureSensorType">
+    <DisplayName>TemperatureSensorType</DisplayName>
+    <Description>A temperature measurement instrument</Description>
+    <References>
+      <Reference ReferenceType="HasSubtype" IsForward="false">ns=1;i=1000</Reference>
+    </References>
+  </UAObjectType>
+
+  <UAVariable NodeId="ns=1;i=4001" BrowseName="1:Temperature" DataType="Double" AccessLevel="1">
+    <DisplayName>Temperature</DisplayName>
+    <Description>Current temperature (°C)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=4000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=4002" BrowseName="1:HighAlarm" DataType="Double" AccessLevel="3">
+    <DisplayName>HighAlarm</DisplayName>
+    <Description>High temperature alarm threshold (°C)</Description>
+    <References>
+      <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=4000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=68</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=4003" BrowseName="1:LowAlarm" DataType="Double" AccessLevel="3">
+    <DisplayName>LowAlarm</DisplayName>
+    <Description>Low temperature alarm threshold (°C)</Description>
+    <References>
+      <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=4000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=68</Reference>
+    </References>
+  </UAVariable>
+
+  <!-- ================================================================== -->
+  <!-- ValveType                                                           -->
+  <!-- ================================================================== -->
+  <UAObjectType NodeId="ns=1;i=5000" BrowseName="1:ValveType">
+    <DisplayName>ValveType</DisplayName>
+    <Description>A control valve</Description>
+    <References>
+      <Reference ReferenceType="HasSubtype" IsForward="false">ns=1;i=1000</Reference>
+    </References>
+  </UAObjectType>
+
+  <UAVariable NodeId="ns=1;i=5001" BrowseName="1:Position" DataType="Double" AccessLevel="3">
+    <DisplayName>Position</DisplayName>
+    <Description>Valve position (0-100%)</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=5000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+  <UAVariable NodeId="ns=1;i=5002" BrowseName="1:IsOpen" DataType="Boolean" AccessLevel="1">
+    <DisplayName>IsOpen</DisplayName>
+    <Description>Whether the valve is open</Description>
+    <References>
+      <Reference ReferenceType="HasComponent" IsForward="false">ns=1;i=5000</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=63</Reference>
+    </References>
+  </UAVariable>
+
+</UANodeSet>
