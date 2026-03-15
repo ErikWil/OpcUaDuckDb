@@ -9,3 +9,7 @@ opcua = { version = "0.12", features = ["client"] }
 chrono = "0.4"
 thiserror = "2"
 log = "0.4"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

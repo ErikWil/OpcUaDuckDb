@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use opcua::client::prelude::*;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors returned by the OPC UA client.
@@ -15,6 +16,52 @@ pub enum OpcUaError {
     Write(String),
     #[error("Browse error: {0}")]
     Browse(String),
+}
+
+/// Configuration for an OPC UA connection.
+///
+/// Contains the endpoint URL plus optional security and authentication parameters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpcUaConnectionConfig {
+    /// The OPC UA server endpoint URL (e.g. `opc.tcp://localhost:4840`).
+    pub endpoint_url: String,
+    /// Security policy name (e.g. `"None"`, `"Basic256Sha256"`). Defaults to `"None"`.
+    #[serde(default)]
+    pub security_policy: Option<String>,
+    /// Message security mode (e.g. `"None"`, `"Sign"`, `"SignAndEncrypt"`). Defaults to `"None"`.
+    #[serde(default)]
+    pub security_mode: Option<String>,
+    /// Path to the client certificate file (DER or PEM).
+    #[serde(default)]
+    pub certificate_path: Option<String>,
+    /// Path to the client private key file (DER or PEM).
+    #[serde(default)]
+    pub private_key_path: Option<String>,
+    /// An opaque authentication token string.
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    /// Username for username/password authentication.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// Password for username/password authentication.
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+impl OpcUaConnectionConfig {
+    /// Create a minimal connection config with just the endpoint URL.
+    pub fn new(endpoint_url: impl Into<String>) -> Self {
+        Self {
+            endpoint_url: endpoint_url.into(),
+            security_policy: None,
+            security_mode: None,
+            certificate_path: None,
+            private_key_path: None,
+            auth_token: None,
+            username: None,
+            password: None,
+        }
+    }
 }
 
 /// A dynamically typed OPC UA value.
@@ -214,5 +261,73 @@ mod tests {
         } else {
             panic!("Expected Int32");
         }
+    }
+
+    #[test]
+    fn test_connection_config_new_defaults() {
+        let config = OpcUaConnectionConfig::new("opc.tcp://localhost:4840");
+        assert_eq!(config.endpoint_url, "opc.tcp://localhost:4840");
+        assert!(config.security_policy.is_none());
+        assert!(config.security_mode.is_none());
+        assert!(config.certificate_path.is_none());
+        assert!(config.private_key_path.is_none());
+        assert!(config.auth_token.is_none());
+        assert!(config.username.is_none());
+        assert!(config.password.is_none());
+    }
+
+    #[test]
+    fn test_connection_config_with_all_fields() {
+        let config = OpcUaConnectionConfig {
+            endpoint_url: "opc.tcp://server:4840".into(),
+            security_policy: Some("Basic256Sha256".into()),
+            security_mode: Some("SignAndEncrypt".into()),
+            certificate_path: Some("/path/to/cert.pem".into()),
+            private_key_path: Some("/path/to/key.pem".into()),
+            auth_token: Some("token123".into()),
+            username: Some("user".into()),
+            password: Some("pass".into()),
+        };
+        assert_eq!(config.endpoint_url, "opc.tcp://server:4840");
+        assert_eq!(config.security_policy.as_deref(), Some("Basic256Sha256"));
+        assert_eq!(config.security_mode.as_deref(), Some("SignAndEncrypt"));
+        assert_eq!(config.certificate_path.as_deref(), Some("/path/to/cert.pem"));
+        assert_eq!(config.private_key_path.as_deref(), Some("/path/to/key.pem"));
+        assert_eq!(config.auth_token.as_deref(), Some("token123"));
+        assert_eq!(config.username.as_deref(), Some("user"));
+        assert_eq!(config.password.as_deref(), Some("pass"));
+    }
+
+    #[test]
+    fn test_connection_config_serde_minimal() {
+        let json = r#"{"endpoint_url":"opc.tcp://localhost:4840"}"#;
+        let config: OpcUaConnectionConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.endpoint_url, "opc.tcp://localhost:4840");
+        assert!(config.security_policy.is_none());
+        assert!(config.username.is_none());
+
+        let serialized = serde_json::to_string(&config).unwrap();
+        let back: OpcUaConnectionConfig = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(back.endpoint_url, config.endpoint_url);
+    }
+
+    #[test]
+    fn test_connection_config_serde_full() {
+        let config = OpcUaConnectionConfig {
+            endpoint_url: "opc.tcp://server:4840".into(),
+            security_policy: Some("Basic256Sha256".into()),
+            security_mode: Some("Sign".into()),
+            certificate_path: Some("/cert.pem".into()),
+            private_key_path: Some("/key.pem".into()),
+            auth_token: None,
+            username: Some("admin".into()),
+            password: Some("secret".into()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: OpcUaConnectionConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.endpoint_url, config.endpoint_url);
+        assert_eq!(back.security_policy, config.security_policy);
+        assert_eq!(back.username, config.username);
+        assert_eq!(back.password, config.password);
     }
 }

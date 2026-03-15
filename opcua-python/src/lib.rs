@@ -1,10 +1,10 @@
 //! Python bindings for the OPC UA client library.
 //!
-//! Exposes `OpcUaClient` with `read_values`, `write_value`, `read_history`,
+//! Exposes `Connection` with `read_values`, `write_value`, `read_history`,
 //! `write_history`, and `browse` to Python via PyO3.
 
 use chrono::{DateTime, TimeZone, Utc};
-use opcua_client::{OpcUaError, OpcValue, Vqt};
+use opcua_client::{OpcUaConnectionConfig, OpcUaError, OpcValue, Vqt};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -123,28 +123,55 @@ impl PyVqt {
     }
 }
 
-/// OPC UA client for Python.
+/// OPC UA connection object for Python.
+///
+/// Contains connection parameters and, once connected, provides methods
+/// for reading, writing, browsing and history operations.
 ///
 /// Example:
-///     client = OpcUaClient("opc.tcp://localhost:4840")
-///     values = client.read_values(["ns=2;s=Temperature"])
-#[pyclass(name = "OpcUaClient")]
-struct PyOpcUaClient {
+///     conn = Connection("opc.tcp://localhost:4840")
+///     values = conn.read_values(["ns=2;s=Temperature"])
+#[pyclass(name = "Connection")]
+struct PyOpcUaConnection {
     inner: opcua_client::OpcUaClient,
 }
 
 #[pymethods]
-impl PyOpcUaClient {
-    /// Connect to an OPC UA server.
+impl PyOpcUaConnection {
+    /// Create a connection to an OPC UA server.
     ///
     /// Args:
-    ///     endpoint_url: The server endpoint (e.g. "opc.tcp://localhost:4840").
-    ///     security_policy: Optional security policy name. Defaults to "None".
+    ///     uri: The server endpoint (e.g. "opc.tcp://localhost:4840").
+    ///     security_policy: Optional security policy name (e.g. "Basic256Sha256").
+    ///     security_mode: Optional message security mode ("None", "Sign", or "SignAndEncrypt").
+    ///     certificate_path: Optional path to client certificate file.
+    ///     private_key_path: Optional path to client private key file.
+    ///     auth_token: Optional authentication token string.
+    ///     username: Optional username for username/password authentication.
+    ///     password: Optional password for username/password authentication.
     #[new]
-    #[pyo3(signature = (endpoint_url, security_policy=None))]
-    fn new(endpoint_url: &str, security_policy: Option<&str>) -> PyResult<Self> {
-        let inner = opcua_client::OpcUaClient::new(endpoint_url, security_policy)
-            .map_err(opcua_err)?;
+    #[pyo3(signature = (uri, security_policy=None, security_mode=None, certificate_path=None, private_key_path=None, auth_token=None, username=None, password=None))]
+    fn new(
+        uri: &str,
+        security_policy: Option<String>,
+        security_mode: Option<String>,
+        certificate_path: Option<String>,
+        private_key_path: Option<String>,
+        auth_token: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> PyResult<Self> {
+        let config = OpcUaConnectionConfig {
+            endpoint_url: uri.to_string(),
+            security_policy,
+            security_mode,
+            certificate_path,
+            private_key_path,
+            auth_token,
+            username,
+            password,
+        };
+        let inner = opcua_client::OpcUaClient::new(&config).map_err(opcua_err)?;
         Ok(Self { inner })
     }
 
@@ -272,7 +299,7 @@ fn timestamp_to_datetime(ts: f64) -> DateTime<Utc> {
 /// Python module for OPC UA client operations.
 #[pymodule]
 fn opcua_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyOpcUaClient>()?;
+    m.add_class::<PyOpcUaConnection>()?;
     m.add_class::<PyVqt>()?;
     Ok(())
 }

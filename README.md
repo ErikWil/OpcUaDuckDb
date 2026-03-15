@@ -35,12 +35,27 @@ A Rust library that exposes five methods and a constructor:
 
 | Method | Signature |
 |--------|-----------|
-| **Constructor** | `OpcUaClient::new(endpoint_url, security_policy) → Result<OpcUaClient>` |
+| **Constructor** | `OpcUaClient::new(&OpcUaConnectionConfig) → Result<OpcUaClient>` |
 | **read_values** | `read_values(&[&str]) → Result<Vec<Vqt>>` |
 | **write_value** | `write_value(&str, &Vqt) → Result<()>` |
 | **read_history** | `read_history(&[&str], from, to, resample, aggregation) → Result<Vec<(String, Vec<Vqt>)>>` |
 | **write_history** | `write_history(&str, &[Vqt]) → Result<()>` |
 | **browse** | `browse(&str, callback) → Result<bool>` — callback returns `false` if target already explored |
+
+### OpcUaConnectionConfig
+
+```rust
+pub struct OpcUaConnectionConfig {
+    pub endpoint_url: String,              // e.g. "opc.tcp://localhost:4840"
+    pub security_policy: Option<String>,   // e.g. "Basic256Sha256"
+    pub security_mode: Option<String>,     // "None", "Sign", or "SignAndEncrypt"
+    pub certificate_path: Option<String>,  // Path to client certificate
+    pub private_key_path: Option<String>,  // Path to client private key
+    pub auth_token: Option<String>,        // Authentication token
+    pub username: Option<String>,          // Username for user/pass auth
+    pub password: Option<String>,          // Password for user/pass auth
+}
+```
 
 ### VQT (Value-Quality-Timestamp)
 
@@ -74,22 +89,33 @@ maturin develop
 ### Usage
 
 ```python
-from opcua_python import OpcUaClient, Vqt
+from opcua_python import Connection, Vqt
 
-# Connect
-client = OpcUaClient("opc.tcp://localhost:4840")
+# Connect with minimal parameters
+conn = Connection("opc.tcp://localhost:4840")
+
+# Connect with security and authentication
+conn = Connection(
+    "opc.tcp://server:4840",
+    security_policy="Basic256Sha256",
+    security_mode="SignAndEncrypt",
+    certificate_path="/path/to/cert.pem",
+    private_key_path="/path/to/key.pem",
+    username="admin",
+    password="secret",
+)
 
 # Read values
-values = client.read_values(["ns=2;s=Pump01.Speed", "ns=2;s=TempSensor01.Temperature"])
+values = conn.read_values(["ns=2;s=Pump01.Speed", "ns=2;s=TempSensor01.Temperature"])
 for v in values:
     print(f"value={v.value}, quality={v.quality}, ts={v.timestamp}")
 
 # Write a value
-client.write_value("ns=2;s=Pump01.Speed", Vqt(1500.0))
+conn.write_value("ns=2;s=Pump01.Speed", Vqt(1500.0))
 
 # Read history
 import time
-history = client.read_history(
+history = conn.read_history(
     ["ns=2;s=TempSensor01.Temperature"],
     from_ts=time.time() - 3600,
     to_ts=time.time(),
@@ -106,7 +132,7 @@ def on_ref(ref_type, target):
     print(f"  [{ref_type}] -> {target}")
     return True
 
-client.browse("i=85", on_ref)
+conn.browse("i=85", on_ref)
 ```
 
 See [`examples/python/example.py`](examples/python/example.py) for a complete example.
@@ -129,20 +155,41 @@ A DuckDB loadable extension that exposes the OPC UA read/write operations as tab
 
 | Function | Parameters | Description |
 |----------|-----------|-------------|
-| `opcua_read(endpoint, node_ids)` | endpoint: VARCHAR, node_ids: VARCHAR (comma-separated) | Read current values |
-| `opcua_read_history(endpoint, node_ids, from, to)` | + optional `resample`, `aggregation` | Read historical values |
-| `opcua_write(endpoint, node_id, value)` | endpoint, node_id: VARCHAR, value: DOUBLE | Write a value |
-| `opcua_write_history(endpoint, node_id, timestamp, value)` | endpoint, node_id, timestamp: VARCHAR, value: DOUBLE | Write a historical value |
+| `opcua_read(connection, node_ids)` | connection: VARCHAR (JSON), node_ids: VARCHAR (comma-separated) | Read current values |
+| `opcua_read_history(connection, node_ids, from, to)` | + optional `resample`, `aggregation` | Read historical values |
+| `opcua_write(connection, node_id, value)` | connection: VARCHAR (JSON), node_id: VARCHAR, value: DOUBLE | Write a value |
+| `opcua_write_history(connection, node_id, timestamp, value)` | connection: VARCHAR (JSON), node_id, timestamp: VARCHAR, value: DOUBLE | Write a historical value |
+
+### Connection JSON
+
+The first parameter to all table functions is a JSON string describing the connection:
+
+```json
+{
+  "endpoint_url": "opc.tcp://localhost:4840",
+  "security_policy": "Basic256Sha256",
+  "security_mode": "SignAndEncrypt",
+  "certificate_path": "/path/to/cert.pem",
+  "private_key_path": "/path/to/key.pem",
+  "username": "admin",
+  "password": "secret"
+}
+```
+
+Only `endpoint_url` is required; all other fields are optional.
 
 ### Usage in DuckDB
 
 ```sql
 -- Read current values
-SELECT * FROM opcua_read('opc.tcp://localhost:4840', 'ns=2;s=Pump01.Speed,ns=2;s=TempSensor01.Temperature');
+SELECT * FROM opcua_read(
+    '{"endpoint_url":"opc.tcp://localhost:4840"}',
+    'ns=2;s=Pump01.Speed,ns=2;s=TempSensor01.Temperature'
+);
 
 -- Read history (raw)
 SELECT * FROM opcua_read_history(
-    'opc.tcp://localhost:4840',
+    '{"endpoint_url":"opc.tcp://localhost:4840"}',
     'ns=2;s=TempSensor01.Temperature',
     '2024-01-01T00:00:00Z',
     '2024-01-02T00:00:00Z'
@@ -150,7 +197,7 @@ SELECT * FROM opcua_read_history(
 
 -- Read history with aggregation
 SELECT * FROM opcua_read_history(
-    'opc.tcp://localhost:4840',
+    '{"endpoint_url":"opc.tcp://localhost:4840"}',
     'ns=2;s=TempSensor01.Temperature',
     '2024-01-01T00:00:00Z',
     '2024-01-02T00:00:00Z',
@@ -159,14 +206,24 @@ SELECT * FROM opcua_read_history(
 );
 
 -- Write a value
-SELECT * FROM opcua_write('opc.tcp://localhost:4840', 'ns=2;s=Pump01.Speed', 1500.0);
+SELECT * FROM opcua_write(
+    '{"endpoint_url":"opc.tcp://localhost:4840"}',
+    'ns=2;s=Pump01.Speed',
+    1500.0
+);
 
 -- Write a historical value
 SELECT * FROM opcua_write_history(
-    'opc.tcp://localhost:4840',
+    '{"endpoint_url":"opc.tcp://localhost:4840"}',
     'ns=2;s=TempSensor01.Temperature',
     '2024-06-15T12:00:00Z',
     85.5
+);
+
+-- Use a connection with authentication
+SELECT * FROM opcua_read(
+    '{"endpoint_url":"opc.tcp://server:4840","username":"admin","password":"secret"}',
+    'ns=2;s=Pump01.Speed'
 );
 ```
 
