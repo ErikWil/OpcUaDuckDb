@@ -1,0 +1,15 @@
+[package]
+name = "opcua-python"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for the OPC UA client library"
+
+[lib]
+name = "opcua_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+opcua-client = { path = "../opcua-client" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+chrono = "0.4"
+

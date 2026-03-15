@@ -1,0 +1,18 @@
+[package]
+name = "opcua-duckdb"
+version = "0.1.0"
+edition = "2021"
+description = "DuckDB extension for OPC UA read/write table functions"
+
+[lib]
+name = "opcua_duckdb"
+crate-type = ["cdylib"]
+
+[dependencies]
+opcua-client = { path = "../opcua-client" }
+duckdb = { version = "1.10500", features = ["vtab", "loadable-extension"] }
+duckdb-loadable-macros = "1.10500"
+libduckdb-sys = "1.10500"
+chrono = "0.4"
+log = "0.4"
+
