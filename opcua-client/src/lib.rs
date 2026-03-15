@@ -10,7 +10,7 @@
 
 mod types;
 
-pub use types::{OpcUaError, OpcValue, Vqt};
+pub use types::{OpcUaConnectionConfig, OpcUaError, OpcValue, Vqt};
 
 use chrono::{DateTime, Utc};
 use opcua::client::prelude::*;
@@ -34,28 +34,51 @@ impl OpcUaClient {
     /// Create a new client connected to the given OPC UA endpoint.
     ///
     /// # Arguments
-    /// * `endpoint_url` - The OPC UA server endpoint URL (e.g. `opc.tcp://localhost:4840`)
-    /// * `security_policy` - Optional security policy name (defaults to `"None"`)
-    pub fn new(endpoint_url: &str, security_policy: Option<&str>) -> Result<Self, OpcUaError> {
-        let mut client = ClientBuilder::new()
+    /// * `config` - Connection configuration containing the endpoint URL and optional
+    ///   security/authentication parameters.
+    pub fn new(config: &OpcUaConnectionConfig) -> Result<Self, OpcUaError> {
+        let mut builder = ClientBuilder::new()
             .application_name("opcua-client-rs")
             .application_uri("urn:opcua-client-rs")
-            .create_sample_keypair(true)
-            .trust_server_certs(true)
-            .session_retry_limit(3)
+            .session_retry_limit(3);
+
+        if let (Some(cert), Some(key)) = (&config.certificate_path, &config.private_key_path) {
+            builder = builder
+                .certificate_path(cert)
+                .private_key_path(key);
+        } else {
+            builder = builder.create_sample_keypair(true);
+        }
+        builder = builder.trust_server_certs(true);
+
+        let mut client = builder
             .client()
             .ok_or_else(|| OpcUaError::Connection("Failed to create OPC UA client".into()))?;
 
-        let policy = security_policy.unwrap_or("None");
+        let policy = config
+            .security_policy
+            .as_deref()
+            .unwrap_or("None");
+        let mode = match config.security_mode.as_deref() {
+            Some("Sign") => MessageSecurityMode::Sign,
+            Some("SignAndEncrypt") => MessageSecurityMode::SignAndEncrypt,
+            _ => MessageSecurityMode::None,
+        };
         let endpoint: EndpointDescription = (
-            endpoint_url,
+            config.endpoint_url.as_str(),
             policy,
-            MessageSecurityMode::None,
+            mode,
         )
             .into();
 
+        let identity = if let (Some(user), Some(pass)) = (&config.username, &config.password) {
+            IdentityToken::UserName(user.clone(), pass.clone())
+        } else {
+            IdentityToken::Anonymous
+        };
+
         let session = client
-            .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
+            .connect_to_endpoint(endpoint, identity)
             .map_err(|e| OpcUaError::Connection(format!("Failed to connect: {e}")))?;
 
         Ok(Self { session })

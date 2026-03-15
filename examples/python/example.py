@@ -6,7 +6,7 @@ Prerequisites:
     - Have an OPC UA server running (e.g. on opc.tcp://localhost:4840)
 
 This example demonstrates:
-    1. Connecting to an OPC UA server
+    1. Creating a connection to an OPC UA server
     2. Reading current values
     3. Writing a value
     4. Reading historical data
@@ -15,14 +15,14 @@ This example demonstrates:
 """
 
 import time
-from opcua_python import OpcUaClient, Vqt
+from opcua_python import Connection, Vqt
 
 
 def main():
     # ── 1. Connect ──────────────────────────────────────────────────────
     endpoint = "opc.tcp://localhost:4840"
     print(f"Connecting to {endpoint} ...")
-    client = OpcUaClient(endpoint)
+    conn = Connection(endpoint)
     print("Connected!\n")
 
     # ── 2. Read current values ──────────────────────────────────────────
@@ -32,7 +32,7 @@ def main():
         "ns=2;s=TempSensor01.Temperature",
     ]
     print("Reading current values:")
-    values = client.read_values(node_ids)
+    values = conn.read_values(node_ids)
     for nid, vqt in zip(node_ids, values):
         print(f"  {nid}: value={vqt.value}, quality={vqt.quality}, ts={vqt.timestamp}")
     print()
@@ -42,14 +42,14 @@ def main():
     new_speed = 1500.0
     print(f"Writing {new_speed} to {target_node} ...")
     vqt = Vqt(new_speed)
-    client.write_value(target_node, vqt)
+    conn.write_value(target_node, vqt)
     print("Write complete.\n")
 
     # ── 4. Read historical data ─────────────────────────────────────────
     now = time.time()
     one_hour_ago = now - 3600
     print("Reading raw history for the last hour:")
-    history = client.read_history(
+    history = conn.read_history(
         ["ns=2;s=TempSensor01.Temperature"],
         from_ts=one_hour_ago,
         to_ts=now,
@@ -62,7 +62,7 @@ def main():
 
     # Read with aggregation (10-second average)
     print("Reading 10-second average history:")
-    history_avg = client.read_history(
+    history_avg = conn.read_history(
         ["ns=2;s=TempSensor01.Temperature"],
         from_ts=one_hour_ago,
         to_ts=now,
@@ -80,7 +80,7 @@ def main():
         Vqt(22.0, quality=0, timestamp=now - 30),
         Vqt(22.3, quality=0, timestamp=now),
     ]
-    client.write_history("ns=2;s=TempSensor01.Temperature", historical_values)
+    conn.write_history("ns=2;s=TempSensor01.Temperature", historical_values)
     print("Historical write complete.\n")
 
     # ── 6. Browse the address space ─────────────────────────────────────
@@ -95,7 +95,7 @@ def main():
         return True
 
     print("Browsing from i=85 (Objects folder):")
-    client.browse("i=85", on_reference)
+    conn.browse("i=85", on_reference)
     print(f"  Discovered {len(visited)} nodes.\n")
 
     print("Done.")

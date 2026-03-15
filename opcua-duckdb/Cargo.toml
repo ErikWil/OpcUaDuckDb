@@ -15,4 +15,5 @@ duckdb-loadable-macros = "1.10500"
 libduckdb-sys = "1.10500"
 chrono = "0.4"
 log = "0.4"
+serde_json = "1"
 

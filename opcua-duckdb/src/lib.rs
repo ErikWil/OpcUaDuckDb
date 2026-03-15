@@ -1,10 +1,14 @@
 //! DuckDB extension for OPC UA read/write operations.
 //!
 //! Exposes the following table functions:
-//! - `opcua_read(endpoint, node_id, ...)` – read current values
-//! - `opcua_read_history(endpoint, node_id, from_ts, to_ts, ...)` – read historical values
-//! - `opcua_write(endpoint, node_id, value)` – write a value (returns status)
-//! - `opcua_write_history(endpoint, node_id, timestamp, value)` – write historical values (returns status)
+//! - `opcua_read(connection, node_id, ...)` – read current values
+//! - `opcua_read_history(connection, node_id, from_ts, to_ts, ...)` – read historical values
+//! - `opcua_write(connection, node_id, value)` – write a value (returns status)
+//! - `opcua_write_history(connection, node_id, timestamp, value)` – write historical values (returns status)
+//!
+//! The `connection` parameter is a JSON string describing the OPC UA connection.
+//! Minimal: `'{"endpoint_url":"opc.tcp://localhost:4840"}'`
+//! Full: `'{"endpoint_url":"opc.tcp://server:4840","security_policy":"Basic256Sha256","username":"admin","password":"secret"}'`
 
 use duckdb::{
     Connection, Result,
@@ -12,11 +16,18 @@ use duckdb::{
     duckdb_entrypoint_c_api,
     vtab::{BindInfo, InitInfo, TableFunctionInfo, VTab},
 };
-use opcua_client::{OpcUaClient, OpcValue, Vqt};
+use opcua_client::{OpcUaClient, OpcUaConnectionConfig, OpcValue, Vqt};
 use std::error::Error;
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
+
+/// Parse a JSON connection string into an `OpcUaConnectionConfig`.
+fn parse_connection(json: &str) -> Result<OpcUaConnectionConfig, Box<dyn Error>> {
+    let config: OpcUaConnectionConfig = serde_json::from_str(json)
+        .map_err(|e| format!("Invalid connection JSON: {e}"))?;
+    Ok(config)
+}
 
 // ---------------------------------------------------------------------------
 // opcua_read – read current values
@@ -24,7 +35,7 @@ use std::sync::Mutex;
 
 #[repr(C)]
 struct ReadBindData {
-    endpoint: String,
+    connection: OpcUaConnectionConfig,
     node_ids: Vec<String>,
 }
 
@@ -45,14 +56,15 @@ impl VTab for OpcUaReadVTab {
         bind.add_result_column("quality", LogicalTypeHandle::from(LogicalTypeId::UInteger));
         bind.add_result_column("timestamp", LogicalTypeHandle::from(LogicalTypeId::Varchar));
 
-        let endpoint = bind.get_parameter(0).to_string();
+        let connection_json = bind.get_parameter(0).to_string();
+        let connection = parse_connection(&connection_json)?;
         let node_ids_str = bind.get_parameter(1).to_string();
         let node_ids: Vec<String> = node_ids_str
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
 
-        Ok(ReadBindData { endpoint, node_ids })
+        Ok(ReadBindData { connection, node_ids })
     }
 
     fn init(_: &InitInfo) -> Result<Self::InitData, Box<dyn Error>> {
@@ -73,7 +85,7 @@ impl VTab for OpcUaReadVTab {
             return Ok(());
         }
 
-        let client = OpcUaClient::new(&bind_data.endpoint, None)?;
+        let client = OpcUaClient::new(&bind_data.connection)?;
         let id_refs: Vec<&str> = bind_data.node_ids.iter().map(|s| s.as_str()).collect();
         let values = client.read_values(&id_refs)?;
 
@@ -104,7 +116,7 @@ impl VTab for OpcUaReadVTab {
 
     fn parameters() -> Option<Vec<LogicalTypeHandle>> {
         Some(vec![
-            LogicalTypeHandle::from(LogicalTypeId::Varchar), // endpoint
+            LogicalTypeHandle::from(LogicalTypeId::Varchar), // connection (JSON)
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // comma-separated node_ids
         ])
     }
@@ -116,7 +128,7 @@ impl VTab for OpcUaReadVTab {
 
 #[repr(C)]
 struct ReadHistoryBindData {
-    endpoint: String,
+    connection: OpcUaConnectionConfig,
     node_ids: Vec<String>,
     from_ts: String,
     to_ts: String,
@@ -142,7 +154,8 @@ impl VTab for OpcUaReadHistoryVTab {
         bind.add_result_column("quality", LogicalTypeHandle::from(LogicalTypeId::UInteger));
         bind.add_result_column("timestamp", LogicalTypeHandle::from(LogicalTypeId::Varchar));
 
-        let endpoint = bind.get_parameter(0).to_string();
+        let connection_json = bind.get_parameter(0).to_string();
+        let connection = parse_connection(&connection_json)?;
         let node_ids_str = bind.get_parameter(1).to_string();
         let from_ts = bind.get_parameter(2).to_string();
         let to_ts = bind.get_parameter(3).to_string();
@@ -163,7 +176,7 @@ impl VTab for OpcUaReadHistoryVTab {
             .unwrap_or_else(|| "Average".to_string());
 
         Ok(ReadHistoryBindData {
-            endpoint,
+            connection,
             node_ids,
             from_ts,
             to_ts,
@@ -190,7 +203,7 @@ impl VTab for OpcUaReadHistoryVTab {
         {
             let mut rows = init_data.rows.lock().unwrap();
             if rows.is_empty() && init_data.offset.load(Ordering::Relaxed) == 0 {
-                let client = OpcUaClient::new(&bind_data.endpoint, None)?;
+                let client = OpcUaClient::new(&bind_data.connection)?;
                 let id_refs: Vec<&str> = bind_data.node_ids.iter().map(|s| s.as_str()).collect();
 
                 let from = chrono::DateTime::parse_from_rfc3339(&bind_data.from_ts)
@@ -257,7 +270,7 @@ impl VTab for OpcUaReadHistoryVTab {
 
     fn parameters() -> Option<Vec<LogicalTypeHandle>> {
         Some(vec![
-            LogicalTypeHandle::from(LogicalTypeId::Varchar), // endpoint
+            LogicalTypeHandle::from(LogicalTypeId::Varchar), // connection (JSON)
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // comma-separated node_ids
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // from (ISO 8601)
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // to (ISO 8601)
@@ -278,7 +291,7 @@ impl VTab for OpcUaReadHistoryVTab {
 
 #[repr(C)]
 struct WriteBindData {
-    endpoint: String,
+    connection: OpcUaConnectionConfig,
     node_id: String,
     value: f64,
 }
@@ -298,12 +311,13 @@ impl VTab for OpcUaWriteVTab {
         bind.add_result_column("node_id", LogicalTypeHandle::from(LogicalTypeId::Varchar));
         bind.add_result_column("status", LogicalTypeHandle::from(LogicalTypeId::Varchar));
 
-        let endpoint = bind.get_parameter(0).to_string();
+        let connection_json = bind.get_parameter(0).to_string();
+        let connection = parse_connection(&connection_json)?;
         let node_id = bind.get_parameter(1).to_string();
         let value: f64 = bind.get_parameter(2).to_string().parse()?;
 
         Ok(WriteBindData {
-            endpoint,
+            connection,
             node_id,
             value,
         })
@@ -327,7 +341,7 @@ impl VTab for OpcUaWriteVTab {
             return Ok(());
         }
 
-        let client = OpcUaClient::new(&bind_data.endpoint, None)?;
+        let client = OpcUaClient::new(&bind_data.connection)?;
         let vqt = Vqt::new(OpcValue::Double(bind_data.value));
         let status = match client.write_value(&bind_data.node_id, &vqt) {
             Ok(()) => "OK".to_string(),
@@ -348,7 +362,7 @@ impl VTab for OpcUaWriteVTab {
 
     fn parameters() -> Option<Vec<LogicalTypeHandle>> {
         Some(vec![
-            LogicalTypeHandle::from(LogicalTypeId::Varchar), // endpoint
+            LogicalTypeHandle::from(LogicalTypeId::Varchar), // connection (JSON)
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // node_id
             LogicalTypeHandle::from(LogicalTypeId::Double),  // value
         ])
@@ -361,7 +375,7 @@ impl VTab for OpcUaWriteVTab {
 
 #[repr(C)]
 struct WriteHistoryBindData {
-    endpoint: String,
+    connection: OpcUaConnectionConfig,
     node_id: String,
     timestamp: String,
     value: f64,
@@ -382,13 +396,14 @@ impl VTab for OpcUaWriteHistoryVTab {
         bind.add_result_column("node_id", LogicalTypeHandle::from(LogicalTypeId::Varchar));
         bind.add_result_column("status", LogicalTypeHandle::from(LogicalTypeId::Varchar));
 
-        let endpoint = bind.get_parameter(0).to_string();
+        let connection_json = bind.get_parameter(0).to_string();
+        let connection = parse_connection(&connection_json)?;
         let node_id = bind.get_parameter(1).to_string();
         let timestamp = bind.get_parameter(2).to_string();
         let value: f64 = bind.get_parameter(3).to_string().parse()?;
 
         Ok(WriteHistoryBindData {
-            endpoint,
+            connection,
             node_id,
             timestamp,
             value,
@@ -413,7 +428,7 @@ impl VTab for OpcUaWriteHistoryVTab {
             return Ok(());
         }
 
-        let client = OpcUaClient::new(&bind_data.endpoint, None)?;
+        let client = OpcUaClient::new(&bind_data.connection)?;
 
         let ts = chrono::DateTime::parse_from_rfc3339(&bind_data.timestamp)
             .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -439,7 +454,7 @@ impl VTab for OpcUaWriteHistoryVTab {
 
     fn parameters() -> Option<Vec<LogicalTypeHandle>> {
         Some(vec![
-            LogicalTypeHandle::from(LogicalTypeId::Varchar), // endpoint
+            LogicalTypeHandle::from(LogicalTypeId::Varchar), // connection (JSON)
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // node_id
             LogicalTypeHandle::from(LogicalTypeId::Varchar), // timestamp (ISO 8601)
             LogicalTypeHandle::from(LogicalTypeId::Double),  // value
