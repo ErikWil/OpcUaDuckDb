@@ -1,6 +1,6 @@
 # OpcUaDuckDb
 
-A Rust workspace providing OPC UA client functionality, Python bindings, and a DuckDB extension.
+A Rust workspace providing OPC UA client functionality, Python bindings, a DuckDB extension, and a Python namespace crawler.
 
 ## Project Structure
 
@@ -21,6 +21,17 @@ OpcUaDuckDb/
 │   ├── Cargo.toml
 │   └── src/
 │       └── lib.rs            # Table function definitions
+├── opcua-crawler/            # OPC UA namespace crawler (Python)
+│   ├── pyproject.toml
+│   ├── src/
+│   │   └── opcua_crawler/
+│   │       ├── __init__.py
+│   │       ├── schema.py     # DuckDB schema definitions
+│   │       ├── crawler.py    # Core crawling logic
+│   │       └── __main__.py   # CLI entry point
+│   └── tests/
+│       ├── test_schema.py
+│       └── test_crawler.py
 └── examples/
     ├── python/
     │   └── example.py        # Python usage example
@@ -245,6 +256,102 @@ LOAD 'path/to/libopcua_duckdb.so';
 - [PyO3](https://pyo3.rs/) – Rust ↔ Python bindings
 - [DuckDB](https://duckdb.org/) – In-process analytical database
 - [chrono](https://crates.io/crates/chrono) – Date/time handling
+- [asyncua](https://pypi.org/project/asyncua/) – Python OPC UA client (used by the crawler)
+
+## OPC UA Namespace Crawler (`opcua-crawler`)
+
+A Python project that crawls an OPC UA server's address space and stores it
+as a graph in DuckDB.  Nodes become vertices; references become edges.
+
+### Installation
+
+```bash
+cd opcua-crawler
+pip install -e ".[dev]"
+```
+
+### Usage
+
+```bash
+# Crawl a server and write the graph to a DuckDB file
+opcua-crawler opc.tcp://localhost:4840 namespace.duckdb
+
+# Skip nodes of specific types
+opcua-crawler opc.tcp://localhost:4840 namespace.duckdb \
+    --skip-type "i=58" --skip-type "i=62"
+
+# Verbose output
+opcua-crawler opc.tcp://localhost:4840 namespace.duckdb -v
+```
+
+Or use the crawler programmatically:
+
+```python
+import asyncio
+from opcua_crawler import OpcUaCrawler
+
+async def main():
+    crawler = OpcUaCrawler(
+        endpoint_url="opc.tcp://localhost:4840",
+        db_path="namespace.duckdb",
+        skip_types={"i=58"},  # skip BaseObjectType sub-trees
+    )
+    conn = await crawler.crawl()
+
+    # Query the resulting graph
+    print(conn.execute("SELECT COUNT(*) FROM nodes").fetchone())
+    print(conn.execute("SELECT COUNT(*) FROM edges").fetchone())
+
+asyncio.run(main())
+```
+
+### Schema
+
+**nodes** – one row per OPC UA node:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER PK | Internal graph id |
+| nodeid | VARCHAR | OPC UA NodeId string |
+| nodeclass | INTEGER | OPC UA NodeClass |
+| browsename | VARCHAR | Browse name |
+| displayname | VARCHAR | Display name |
+| description | VARCHAR | Node description |
+| typeid | INTEGER | FK → nodes.id of the type definition |
+| parentid | INTEGER | FK → nodes.id of the parent |
+| properties | JSON | Properties as `{"name": {"nodeid": "…", "value": …}}` |
+| descendants | INTEGER[] | All transitively reachable descendant ids |
+| *(+ more)* | | writemask, isabstract, symmetric, datatype, … |
+
+**edges** – one row per reference:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| parentid | INTEGER | Source node id |
+| childid | INTEGER | Target node id |
+| referenceid | INTEGER | Reference-type node id |
+
+### Crawling behaviour
+
+* Browsing starts at **i=86** (Types) then **i=85** (Objects).
+* **HasProperty** sub-nodes are stored in the parent's `properties` JSON
+  column instead of as separate node rows.
+* **HasTypeDefinition** (and sub-types) references are stored in the node's
+  `typeid` column instead of in the `edges` table.
+* Nodes whose type definition is in the `--skip-type` set are skipped
+  together with their sub-trees.
+* After traversal, the `descendants` column is filled with a BFS over
+  the edge graph.
+* A **transitive closure** is computed: for every indirect path A → … → C
+  a direct edge is added.  The `referenceid` of closure edges is set to the
+  most common reference type in the existing edges.
+
+### Running the tests
+
+```bash
+cd opcua-crawler
+pytest tests/ -v
+```
 
 ## License
 
