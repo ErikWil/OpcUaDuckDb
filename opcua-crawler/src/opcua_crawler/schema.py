@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     nodeclass INTEGER,
     browsename VARCHAR,
     displayname VARCHAR,
-    "description" VARCHAR,
+    description VARCHAR,
     writemask INTEGER,
     isabstract INTEGER,
     "symmetric" INTEGER,

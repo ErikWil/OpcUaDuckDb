@@ -169,7 +169,7 @@ class OpcUaCrawler:
 
         type_def_id: Optional[int] = None
         properties: Dict[str, Any] = {}
-        children_refs: list = []
+        children_refs: List[Any] = []
 
         for ref in refs:
             target_str = ref.NodeId.to_string()

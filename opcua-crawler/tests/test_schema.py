@@ -1,5 +1,7 @@
 """Tests for the DuckDB schema creation."""
 
+import json
+
 import duckdb
 import pytest
 
@@ -126,8 +128,6 @@ class TestCreateSchema:
     def test_properties_column_accepts_json(self) -> None:
         conn = _connect()
         create_schema(conn)
-        import json
-
         props = json.dumps({"Speed": {"nodeid": "i=100", "value": 42}})
         conn.execute(
             "INSERT INTO nodes (id, nodeid, properties) VALUES (1, 'i=85', $1)",
